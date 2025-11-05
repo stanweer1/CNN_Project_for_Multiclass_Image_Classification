@@ -1,0 +1,50 @@
+name: Sync Model and Deploy to Hugging Face (CI + CD)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - ".github/workflows/deploy_huggingface.yml"
+  workflow_dispatch:
+
+jobs:
+  upload-and-restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install git-lfs
+        run: |
+          sudo apt-get update
+          sudo apt-get install git-lfs
+          git lfs install
+
+      - name: Push Code and Model to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          echo "🔁 Cloning Hugging Face Space repository..."
+          git clone https://huggingface.co/spaces/stanweer/FashionMNIST_CNN_Predictor space_repo
+
+          echo "📂 Copying updated files..."
+          cp -r app space_repo/
+          cp -f Dockerfile space_repo/
+          cp -f requirements.txt space_repo/
+
+          cd space_repo
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "🤖 Auto-update model and app from GitHub CI"
+          git push https://user:$HF_TOKEN@huggingface.co/spaces/stanweer/FashionMNIST_CNN_Predictor main
+          
+      - name: Trigger Space Rebuild
+        run: |
+          echo "🚀 Restarting Hugging Face Space..."
+          curl -X POST -H "Authorization: Bearer ${{ secrets.HF_TOKEN }}" \
+               https://huggingface.co/api/spaces/stanweer/FashionMNIST_CNN_Predictor/restart
